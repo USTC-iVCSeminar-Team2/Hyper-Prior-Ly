@@ -18,7 +18,7 @@ from utils import scan_checkpoint, load_checkpoint, save_checkpoint
 torch.backends.cudnn.benchmark = True
 
 
-def train(rank, a, h):
+def rain(rank, a, h):
     # Init DDP devices
     if h.num_gpus > 1:
         init_process_group(backend=h.dist_config['dist_backend'], init_method=h.dist_config['dist_url'],
@@ -139,17 +139,27 @@ def train(rank, a, h):
                     compressor.eval()
                     torch.cuda.empty_cache()
                     val_err_distortion = 0
+                    val_bit_rate_y = 0
+                    val_bit_rate_z = 0
 
                     with torch.no_grad():
                         for j, batch in enumerate(validation_loader):
                             img = batch
                             img = img.to(device, non_blocking=True)
-                            rec_img = compressor.module.inference(img) if h.num_gpus > 1 else compressor.inference(img)
+                            rec_img, val_bit_rate_y_, val_bit_rate_z_ = compressor.module.inference(
+                                img) if h.num_gpus > 1 else compressor.inference(img)
 
                             val_err_distortion += F.mse_loss(img, rec_img).item()
+                            val_bit_rate_y += val_bit_rate_y_
+                            val_bit_rate_z += val_bit_rate_z_
 
                         val_distortion = val_err_distortion / (j + 1)
+                        val_bit_rate_y = val_bit_rate_y / (j + 1)
+                        val_bit_rate_z = val_bit_rate_z / (j + 1)
+
                         sw.add_scalar("validation/distortion", val_distortion, steps)
+                        sw.add_scalar("validation/bit_rate_y", val_bit_rate_y, steps)
+                        sw.add_scalar("validation/bit_rate_z", val_bit_rate_z, steps)
 
                     compressor.train()
 
@@ -190,7 +200,7 @@ def main():
     parser.add_argument('--stdout_interval', default=5, type=int)
     parser.add_argument('--checkpoint_interval', default=100, type=int)
     parser.add_argument('--summary_interval', default=100, type=int)
-    parser.add_argument('--validation_interval', default=1000, type=int)
+    parser.add_argument('--validation_interval', default=200, type=int)
     parser.add_argument('--fine_tuning', default=False, type=bool)
     parser.add_argument('--lambda_', default=0.0483, type=float)
 

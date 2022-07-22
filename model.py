@@ -45,9 +45,9 @@ class HyperPrior(nn.Module):
         scale = self.h_s(z_hat)
 
         bits_z = torch.sum(torch.clamp(-torch.log2(self.factorized_model.likelihood(z_hat)), min=0, max=50))
-        bpp_z = bits_z / (input_.shape[0] * input_.shape[1] * input_.shape[2])
+        bpp_z = bits_z / (input_.shape[0] * input_.shape[2] * input_.shape[3])
         bits_y = torch.sum(torch.clamp(-torch.log2(self.gaussian_model.likelihood(y_hat, scale)), min=0, max=50))
-        bpp_y = bits_y / (input_.shape[0] * input_.shape[1] * input_.shape[2])
+        bpp_y = bits_y / (input_.shape[0] * input_.shape[2] * input_.shape[3])
 
         disstortion = torch.mean((x - x_hat) ** 2)
 
@@ -66,14 +66,16 @@ class HyperPrior(nn.Module):
         scale = self.h_s(z_hat)
 
         stream_z, side_info_z = self.entropy_coder_factorized.compress(z_hat)
-        z_hat_dec = self.entropy_coder_factorized.decompress(stream_z, side_info_z)
+        z_hat_dec = self.entropy_coder_factorized.decompress(stream_z, side_info_z, self.device)
         assert torch.equal(z_hat, z_hat_dec), "Entropy code decode for z_hat not consistent !"
 
         stream_y, side_info_y = self.entropy_coder_gaussian.compress(y_hat, scale)
-        y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale)
+        y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale, self.device)
         assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for z_hat not consistent !"
         _ = 0
-        return x_hat
+        bpp_y = len(stream_y) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
+        bpp_z = len(stream_z) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
+        return x_hat, bpp_y, bpp_z
 
 
 if __name__ == '__main__':
