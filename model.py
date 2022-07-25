@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from modules import *
+from time import time
 
 
 class HyperPrior(nn.Module):
@@ -55,23 +56,29 @@ class HyperPrior(nn.Module):
         return loss, bpp_y, bpp_z, disstortion, x_hat
 
     def inference(self, input_):
+        time_enc_start = time()
         x = input_
-
         y = self.g_a(x)
         y_hat = self.quantize(y, is_tain=False)
-        x_hat = torch.clamp(self.g_s(y_hat), min=0, max=1)
 
         z = self.h_a(torch.abs(y))
         z_hat = self.quantize(z, is_tain=False)
         scale = self.h_s(z_hat)
 
         stream_z, side_info_z = self.entropy_coder_factorized.compress(z_hat)
-        z_hat_dec = self.entropy_coder_factorized.decompress(stream_z, side_info_z, self.device)
-        assert torch.equal(z_hat, z_hat_dec), "Entropy code decode for z_hat not consistent !"
-
         stream_y, side_info_y = self.entropy_coder_gaussian.compress(y_hat, scale)
+        time_enc_end = time()
+        
+        time_dec_start = time()
+        z_hat_dec = self.entropy_coder_factorized.decompress(stream_z, side_info_z, self.device)
+        # assert torch.equal(z_hat, z_hat_dec), "Entropy code decode for z_hat not consistent !"
+        scale = self.h_s(z_hat_dec)
         y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale, self.device)
-        assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for z_hat not consistent !"
+        # assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for z_hat not consistent !"
+        x_hat = torch.clamp(self.g_s(y_hat_dec), min=0, max=1)
+        time_dec_end = time()
+        print("{:.4f}, {:.4f}".format((time_enc_end - time_enc_start), (time_dec_end - time_dec_start)))
+
         _ = 0
         bpp_y = len(stream_y) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
         bpp_z = len(stream_z) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])

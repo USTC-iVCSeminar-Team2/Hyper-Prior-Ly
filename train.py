@@ -18,7 +18,7 @@ from utils import scan_checkpoint, load_checkpoint, save_checkpoint
 torch.backends.cudnn.benchmark = True
 
 
-def rain(rank, a, h):
+def train(rank, a, h):
     # Init DDP devices
     if h.num_gpus > 1:
         init_process_group(backend=h.dist_config['dist_backend'], init_method=h.dist_config['dist_url'],
