@@ -56,6 +56,7 @@ class HyperPrior(nn.Module):
         return loss, bpp_y, bpp_z, disstortion, x_hat
 
     def inference(self, input_):
+
         time_enc_start = time()
         x = input_
         y = self.g_a(x)
@@ -63,21 +64,27 @@ class HyperPrior(nn.Module):
 
         z = self.h_a(torch.abs(y))
         z_hat = self.quantize(z, is_tain=False)
+        torch.use_deterministic_algorithms(mode=True)
         scale = self.h_s(z_hat)
+        torch.use_deterministic_algorithms(mode=False)
 
         stream_z, side_info_z = self.entropy_coder_factorized.compress(z_hat)
         stream_y, side_info_y = self.entropy_coder_gaussian.compress(y_hat, scale)
         time_enc_end = time()
-        
+
         time_dec_start = time()
         z_hat_dec = self.entropy_coder_factorized.decompress(stream_z, side_info_z, self.device)
-        # assert torch.equal(z_hat, z_hat_dec), "Entropy code decode for z_hat not consistent !"
-        scale = self.h_s(z_hat_dec)
-        y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale, self.device)
-        # assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for z_hat not consistent !"
+        assert torch.equal(z_hat, z_hat_dec), "Entropy code decode for z_hat not consistent !"
+        torch.use_deterministic_algorithms(mode=True)
+        scale_dec = self.h_s(z_hat_dec)
+        torch.use_deterministic_algorithms(mode=False)
+        assert torch.equal(scale, scale_dec), "Scale codec not consistent!"
+
+        y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale_dec, self.device)
+        assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for y_hat not consistent !"
         x_hat = torch.clamp(self.g_s(y_hat_dec), min=0, max=1)
         time_dec_end = time()
-        print("{:.4f}, {:.4f}".format((time_enc_end - time_enc_start), (time_dec_end - time_dec_start)))
+        # print("{:.4f}, {:.4f}".format((time_enc_end - time_enc_start), (time_dec_end - time_dec_start)))
 
         _ = 0
         bpp_y = len(stream_y) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
