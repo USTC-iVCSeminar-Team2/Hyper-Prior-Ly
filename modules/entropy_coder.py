@@ -4,6 +4,7 @@ import os
 from modules import FactorizedModel
 from modules import GaussianModel
 import torchac
+from time import time
 
 class EntropyCoder():
     '''
@@ -123,15 +124,29 @@ class EntropyCoderGaussian(EntropyCoder):
         symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(inputs.device)
         symbol_samples = symbol_samples.reshape((1, 1, 1, -1)).repeat((B, C, H * W, 1))     # B, C, H*W, L
         scales = scales.reshape((B, C, H * W, 1))
+
+        t_pmf_start = time()
         pmf = self.entropy_model.likelihood(symbol_samples, scales).detach()
         pmf = torch.clamp(pmf, min=0.0, max=1.0)
+        t_pmf_end = time()
+
+        t_cdf_start = time()
         cdf = self.pmf_to_cdf(pmf)
         cdf = cdf.reshape(B, C, H, W, -1).to(torch.device('cpu'))
+        t_cdf_end = time()
+
         # Get the decoded y_hat, which starts from 0
         inputs_norm = (inputs - symbol_min).to(torch.int16).to(torch.device('cpu'))
+
+        t_torchac_start = time()
         stream = torchac.encode_float_cdf(cdf, inputs_norm, needs_normalization=True)
+        t_torchac_end = time()
+
         # The range of the symbols and the latent y shape needs to be transmitted
         side_info = (int(symbol_min), int(symbol_max), H, W)
+
+        print("{:d} {:.4f} {:.4f} {:.4f}".format(symbol_samples.shape[-1], (t_pmf_end - t_pmf_start),
+                                                 (t_cdf_end - t_cdf_start), (t_torchac_end - t_torchac_start)))
         return stream, side_info
 
     @torch.no_grad()
@@ -155,8 +170,14 @@ class EntropyCoderGaussian(EntropyCoder):
 
 
 if __name__ == '__main__':
-    bit_estimator = FactorizedModel((4, 192, 16, 16), K=4)
-    entropy_coder = EntropyCoder(bit_estimator)
-    y_hat = (torch.randn(4, 192, 16, 16) * 10).int()
-    print(y_hat.type())
-    entropy_coder.compress(y_hat)
+    # bit_estimator = FactorizedModel((4, 192, 16, 16), K=4)
+    # entropy_coder = EntropyCoder(bit_estimator)
+    # y_hat = (torch.randn(4, 192, 16, 16) * 10).int()
+    # print(y_hat.type())
+    # entropy_coder.compress(y_hat)
+    entropy_model = FactorizedModel()
+    coder =  EntropyCoder(entropy_model)
+
+    y = torch.randn(size=(1, 128, 16, 16))
+
+    coder.encode(y)
