@@ -6,10 +6,12 @@ from modules import GaussianModel
 import torchac
 from time import time
 
+
 class EntropyCoder():
     '''
     Base class for entropy coding
     '''
+
     def __init__(self, entropy_model):
         self.entropy_model = entropy_model
 
@@ -19,14 +21,20 @@ class EntropyCoder():
         :return: cdf from pmf, shape [B, C, 1, L+1]
         '''
         # Make the sum of pmf equal to 1
-        pmf_sum = torch.sum(pmf, dim = 3).reshape(*pmf.shape[0:3], 1)
+        pmf_sum = torch.sum(pmf, dim=3).view(*pmf.shape[0:3], 1)
         pmf_norm = torch.div(pmf, pmf_sum)
         # Add pmf together to get cdf
         cdf = torch.zeros(pmf_norm.shape).to(pmf.device)
-        for i in range(0, pmf_norm.shape[-1]):
-            cdf[:, :, :, i:] += pmf_norm[:, :, :, i].reshape(*pmf.shape[0:3], 1)
-        # Add a beginning 0 for cdf
-        cdf = torch.cat((torch.zeros(*pmf.shape[0:3], 1).to(pmf.device), cdf), dim=-1).clamp(min=0.0, max=1.0)
+        # for i in range(0, pmf_norm.shape[-1]):
+        #     cdf[:, :, :, i:] += pmf_norm[:, :, :, i].view(*pmf.shape[0:3], 1)
+        # # Add a beginning 0 for cdf
+        # cdf = torch.cat((torch.zeros(*pmf.shape[0:3], 1).to(pmf.device), cdf), dim=-1).clamp(min=0.0, max=1.0)
+
+        cdf = torch.cat((torch.zeros(*pmf.shape[0:3], 1).to(pmf.device), cdf), dim=-1)
+        for i in range(1, pmf_norm.shape[-1] + 1):
+            cdf[:, :, :, i] = (cdf[:, :, :, i - 1] + pmf_norm[:, :, :, i - 1])
+        cdf.clamp_(min=0.0, max=1.0)
+
         return cdf
 
     @torch.no_grad()
@@ -41,7 +49,7 @@ class EntropyCoder():
         symbol_max = torch.max(inputs).detach().to(torch.float)
         symbol_min = torch.min(inputs).detach().to(torch.float)
         symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(inputs.device)
-        symbol_samples = symbol_samples.reshape(1, 1, 1, -1).repeat(B, C, 1, 1)       # B, C, H, W
+        symbol_samples = symbol_samples.reshape(1, 1, 1, -1).repeat(B, C, 1, 1)  # B, C, H, W
         # Get the pmf and cdf of the above symbols
         pmf = self.entropy_model.likelihood(symbol_samples).detach()
         pmf = torch.clamp(pmf, min=0.0, max=1.0)
@@ -90,7 +98,7 @@ class EntropyCoder():
         if filepath:
             with open(filepath, 'wb') as f:
                 f.write(stream)
-        return 8*len(stream)
+        return 8 * len(stream)
         # print("Total bits: {:d}".format(8*len(stream)))
 
     def decode(self, filepath, device=torch.device('cpu')):
@@ -121,19 +129,30 @@ class EntropyCoderGaussian(EntropyCoder):
         symbol_max = torch.max(inputs).detach().to(torch.float)
         symbol_min = torch.min(inputs).detach().to(torch.float)
         # Get the pmf and cdf of the above symbols
+
+        # symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(inputs.device)
+        # symbol_samples = symbol_samples.reshape((1, 1, 1, 1, -1)).repeat((B, C, H, W, 1))  # B, C, H*W, L
+        # L = symbol_samples.size()[-1]
+
         symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(inputs.device)
-        symbol_samples = symbol_samples.reshape((1, 1, 1, -1)).repeat((B, C, H * W, 1))     # B, C, H*W, L
+        symbol_samples = symbol_samples.reshape((1, 1, 1, -1)).repeat((B, C, H * W, 1))  # B, C, H*W, L
         scales = scales.reshape((B, C, H * W, 1))
 
-        t_pmf_start = time()
+        t_pc_start = time()
         pmf = self.entropy_model.likelihood(symbol_samples, scales).detach()
         pmf = torch.clamp(pmf, min=0.0, max=1.0)
-        t_pmf_end = time()
-
-        t_cdf_start = time()
         cdf = self.pmf_to_cdf(pmf)
         cdf = cdf.reshape(B, C, H, W, -1).to(torch.device('cpu'))
-        t_cdf_end = time()
+
+        # distribution
+        # mu = torch.zeros_like(inputs)
+        # mu = mu.view(*mu.size(), 1).repeat(1, 1, 1, 1, L)
+        # sigma = torch.clamp(scales, 1e-6, 1e6)
+        # sigma = sigma.view(*sigma.size(), 1).repeat(1, 1, 1, 1, L)
+        # gaussian = torch.distributions.normal.Normal(mu, sigma)
+        # cdf = gaussian.cdf(symbol_samples).to(torch.device('cpu'))
+
+        t_pc_end = time()
 
         # Get the decoded y_hat, which starts from 0
         inputs_norm = (inputs - symbol_min).to(torch.int16).to(torch.device('cpu'))
@@ -145,8 +164,8 @@ class EntropyCoderGaussian(EntropyCoder):
         # The range of the symbols and the latent y shape needs to be transmitted
         side_info = (int(symbol_min), int(symbol_max), H, W)
 
-        print("{:d} {:.4f} {:.4f} {:.4f}".format(symbol_samples.shape[-1], (t_pmf_end - t_pmf_start),
-                                                 (t_cdf_end - t_cdf_start), (t_torchac_end - t_torchac_start)))
+        print("L:{:d}\tPmf&Cdf:{:.4f} {:.4f}".format(symbol_samples.shape[-1], (t_pc_end - t_pc_start),
+                                                     (t_torchac_end - t_torchac_start)))
         return stream, side_info
 
     @torch.no_grad()
@@ -155,14 +174,27 @@ class EntropyCoderGaussian(EntropyCoder):
         assert (H == scales.shape[2]) and (W == scales.shape[3]), "Shape dismatch between y and gaussian scales"
         B, C = 1, scales.shape[1]
         # Get a series of symbols according to the minimum and maximum of y_hat
+
+        # symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(device)
+        # symbol_samples = symbol_samples.reshape((1, 1, 1, 1, -1)).repeat((B, C, H, W, 1))  # B, C, H*W, L
+        # L = symbol_samples.size()[-1]
         symbol_samples = torch.arange(symbol_min, symbol_max + 1).to(device)
         symbol_samples = symbol_samples.reshape((1, 1, 1, -1)).repeat((B, C, H * W, 1))  # B, C, H*W, L
         scales = scales.reshape((B, C, H * W, 1))
+
         # Get the pmf and cdf of the above symbols
+        # mu = torch.zeros_like(scales)
+        # mu = mu.view(*mu.size(), 1).repeat(1, 1, 1, 1, L)
+        # sigma = torch.clamp(scales, 1e-6, 1e6)
+        # sigma = sigma.view(*sigma.size(), 1).repeat(1, 1, 1, 1, L)
+        # gaussian = torch.distributions.normal.Normal(mu, sigma)
+        # cdf = gaussian.cdf(symbol_samples).to(torch.device('cpu'))
+
         pmf = self.entropy_model.likelihood(symbol_samples, scales).detach()
         pmf = torch.clamp(pmf, min=0.0, max=1.0)
         cdf = self.pmf_to_cdf(pmf)
         cdf = cdf.reshape(B, C, H, W, -1).to(torch.device('cpu'))
+
         y_hat_dec = torchac.decode_float_cdf(cdf, stream, needs_normalization=True).to(device).to(torch.float)
         # Shift to the right data range
         y_hat_dec += symbol_min
@@ -176,7 +208,7 @@ if __name__ == '__main__':
     # print(y_hat.type())
     # entropy_coder.compress(y_hat)
     entropy_model = FactorizedModel()
-    coder =  EntropyCoder(entropy_model)
+    coder = EntropyCoder(entropy_model)
 
     y = torch.randn(size=(1, 128, 16, 16))
 

@@ -24,7 +24,7 @@ class GaussianModel(nn.Module):
 
 
 if __name__ == '__main__':
-    gaussian_model = GaussianModel ()
+    gaussian_model = GaussianModel()
 
     x = torch.nn.init.normal_(torch.Tensor(4 ,128, 16, 16), mean=0, std=2)
     scale = torch.ones(x.shape, dtype=torch.float32) * 2
