@@ -147,11 +147,11 @@ class EntropyCoderGaussian(EntropyCoder):
         # cdf = cdf.reshape(B, C, H, W, -1).to(torch.device('cpu'))
         ##########################
         raw_cdf = self.entropy_model(symbol_samples+0.5, scales).detach()
-        cdf1 = raw_cdf + torch.linspace(1e-6, 1e-6 * L, steps=L).view(1, 1, 1, -1).repeat(B, C, H * W, 1).to(raw_cdf.device)
-        cdf_min = cdf1[:, :, :, 0].unsqueeze(-1)
-        cdf_max = cdf1[:, :, :, L - 1].unsqueeze(-1)
+        raw_cdf = raw_cdf + torch.linspace(1e-6, 1e-6 * L, steps=L).view(1, 1, 1, -1).to(raw_cdf.device)
+        cdf_min = raw_cdf[:, :, :, 0].unsqueeze(-1)
+        cdf_max = raw_cdf[:, :, :, L - 1].unsqueeze(-1)
         length = cdf_max - cdf_min
-        cdf2 = (cdf1 - cdf_min) / length
+        cdf2 = (raw_cdf - cdf_min) / length
         cdf2 = torch.cat((torch.zeros(*cdf2.shape[0:3], 1).to(cdf2.device), cdf2), dim=-1).clamp(min=0.0, max=1.0)
         cdf2 = cdf2.reshape(B, C, H, W, -1).to(torch.device('cpu'))
         #######################
@@ -192,11 +192,11 @@ class EntropyCoderGaussian(EntropyCoder):
         # cdf = cdf.reshape(B, C, H, W, -1).to(torch.device('cpu'))
         #########################
         raw_cdf = self.entropy_model(symbol_samples+0.5, scales).detach()
-        cdf1 = raw_cdf + torch.linspace(1e-6, 1e-6 * L, steps=L).view(1, 1, 1, -1).repeat(B, C, H * W, 1).to(raw_cdf.device)
-        cdf_min = cdf1[:, :, :, 0].unsqueeze(-1)
-        cdf_max = cdf1[:, :, :, L - 1].unsqueeze(-1)
+        raw_cdf = raw_cdf + torch.linspace(1e-6, 1e-6 * L, steps=L).view(1, 1, 1, -1).to(raw_cdf.device)
+        cdf_min = raw_cdf[:, :, :, 0].unsqueeze(-1)
+        cdf_max = raw_cdf[:, :, :, L - 1].unsqueeze(-1)
         length = cdf_max - cdf_min
-        cdf2 = (cdf1 - cdf_min) / length
+        cdf2 = (raw_cdf - cdf_min) / length
         cdf2 = torch.cat((torch.zeros(*cdf2.shape[0:3], 1).to(cdf2.device), cdf2), dim=-1).clamp(min=0.0, max=1.0)
         cdf2 = cdf2.reshape(B, C, H, W, -1).to(torch.device('cpu'))
         #######################
