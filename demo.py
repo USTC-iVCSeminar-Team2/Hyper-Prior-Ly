@@ -1,4 +1,3 @@
-from models.hyper_prior_compressor import HyperPrior
 import torch
 import argparse
 from utils import load_checkpoint
@@ -7,6 +6,7 @@ from torchvision import transforms
 import json
 from env import AttrDict, build_env
 import os
+from model import HyperPrior
 
 # from skimage.metrics import peak_signal_noise_ratio
 import numpy as np

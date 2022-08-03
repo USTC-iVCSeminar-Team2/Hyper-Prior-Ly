@@ -37,24 +37,25 @@ state_dict_com = load_checkpoint(r"./checkpoint/lambda0.0483_batchsize4_image_co
 compressor.load_state_dict(state_dict_com['compressor'])
 # 读入一幅图像
 compressor = compressor.to(torch.device('cuda:0'))  # 模型传入GPU
-# for img_file in os.listdir(r"\dataset\KoDak"):
-#     img_path = os.path.join(r"\dataset\KoDak", img_file)
-#     image = Image.open(img_path).convert('RGB')
-#     # 转换成Tensor格式，才能进入网络
-#     transform = transforms.Compose([
-#         transforms.ToTensor()
-#     ])
-#     img = transform(image)
-#     img = img.unsqueeze(0).cuda()  # 要加一个纬度，用来匹配batch的纬度
-#     # 得到网络forwar的输出
-#     x_hat, bpp_y, bpp_z = compressor.inference(img)
+for img_file in os.listdir(r"\dataset\KoDak"):
+    img_path = os.path.join(r"\dataset\KoDak", img_file)
+    image = Image.open(img_path).convert('RGB')
+    # 转换成Tensor格式，才能进入网络
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
+    img = transform(image)
+    img = img.unsqueeze(0).cuda()  # 要加一个纬度，用来匹配batch的纬度
+    # 得到网络forwar的输出
+    x_hat, bpp_y, bpp_z = compressor.inference(img)
+    print("img:{}\tMse:{:.5f}\tbpp:{:.5f}".format(img_file, torch.nn.functional.mse_loss(x_hat, img), bpp_z + bpp_y))
 
-image = Image.open(r"\dataset\KoDak\kodim03.png").convert('RGB')
-# 转换成Tensor格式，才能进入网络
-transform = transforms.Compose([
-    transforms.ToTensor()
-])
-img = transform(image)
-img = img.unsqueeze(0).cuda()  # 要加一个纬度，用来匹配batch的纬度
-# 得到网络forwar的输出
-x_hat, bpp_y, bpp_z = compressor.inference(img)
+# image = Image.open(r"\dataset\KoDak\kodim03.png").convert('RGB')
+# # 转换成Tensor格式，才能进入网络
+# transform = transforms.Compose([
+#     transforms.ToTensor()
+# ])
+# img = transform(image)
+# img = img.unsqueeze(0).cuda()  # 要加一个纬度，用来匹配batch的纬度
+# # 得到网络forwar的输出
+# x_hat, bpp_y, bpp_z = compressor.inference(img)

@@ -81,7 +81,7 @@ class HyperPrior(nn.Module):
         assert torch.equal(scale, scale_dec), "Scale codec not consistent!"
 
         y_hat_dec = self.entropy_coder_gaussian.decompress(stream_y, side_info_y, scale_dec, self.device)
-        assert torch.equal(y_hat, y_hat_dec), "Entropy code decode for y_hat not consistent !"
+        assert torch.equal(y_hat, y_hat_dec), "y_hat not equal to y_hat_dec !"
         x_hat = torch.clamp(self.g_s(y_hat_dec), min=0, max=1)
         time_dec_end = time()
         # print("{:.4f}, {:.4f}".format((time_enc_end - time_enc_start), (time_dec_end - time_dec_start)))
