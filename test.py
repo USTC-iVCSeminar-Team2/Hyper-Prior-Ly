@@ -9,7 +9,7 @@ from skimage.metrics import structural_similarity
 from pytorch_msssim import ms_ssim
 import numpy as np
 import argparse
-import json
+import json, os
 
 
 torch.backends.cudnn.benchmark = True
@@ -32,23 +32,25 @@ def test(rank, a, h):
     trans_to_img = transforms.ToPILImage()
 
     # Test loop
+    print("{:8s} {:7s} {:7s}  {:9s} {:9s} {} {}".format("index", "PSNR", "MS-SSIM", "bpp_y", "bpp_z", "Enc.Time", "Dec.time"))
     compressor.eval()
     test_result = {}
     with torch.no_grad():
         for cnt, data in enumerate(test_loader):
             data = data.to(device)
             img = data
-            img_reco, bpp_y, bpp_z = compressor.inference(img)
+            img_reco, bpp_y, bpp_z, t_enc, t_dec = compressor.inference(img)
             # psnr, ssim
             img_pil = trans_to_img(img[0, :])
             img_reco_pil = trans_to_img(img_reco[0, :])
-            # img_reco_pil.save("./checkpoint/img_reco/scale_483/kodim_reco_{:02d}.png".format(cnt + 1))
+            img_reco_pil.save(os.path.join(a.reco_dir, "kodim_reco_{:02d}.png".format(cnt + 1)))
             psnr = peak_signal_noise_ratio(np.asarray(img_pil), np.asarray(img_reco_pil))
             ms_ssim_ = ms_ssim(img, img_reco, data_range=1.0, size_average=False).item()
             # mssim = structural_similarity(np.asarray(img_pil.convert('L')), np.asarray(img_reco_pil.convert('L')))
             # test result
             # test_result['kodim{:02d}'.format(cnt + 1)] = {'psnr': psnr, 'mssim': mssim, 'bpp_y': bpp_y, 'bpp_z': bpp_z}
-            # print('kodim{:02d}, {:.4f}, {:.4f}, {:.6f}, {:.6f}'.format(cnt + 1, psnr, ms_ssim_, bpp_y, bpp_z))
+            print('kodim{:02d}, {:.4f}, {:.4f}, {:.6f}, {:.6f}, {:.3f}, {:.3f}'.format(cnt + 1, psnr, ms_ssim_, bpp_y,
+                                                                                       bpp_z, t_enc, t_dec))
 
         # print(test_result)
 
@@ -63,13 +65,15 @@ def main():
         '--config_file': Path of your config file
         '--lambda_': The lambda setting for RD loss
         '--checkpoint_path: The path of models
+        '--reco_dir': Reco image output path
     '''
     parser_.add_argument('--model_name', default='image_compressor', type=str)
     parser_.add_argument('--test_dir', default="E:\\Datasets\\kodac", type=str)
     parser_.add_argument('--config_file', default="./configs/config.json", type=str)
     parser_.add_argument('--lambda_', default=0.0067, type=float)
-    parser_.add_argument('--checkpoint_path', default="./checkpoint/image_compressor/models/lambda0.013_batchsize64_image_compressor_00280000",
+    parser_.add_argument('--checkpoint_path', default="./checkpoint/image_compressor/models/lambda0.0483_batchsize4_image_compressor_00504000",
                          type=str)
+    parser_.add_argument('--reco_dir', default="./checkpoint/img_reco", type=str)
     a = parser_.parse_args()
 
     test(rank=0, a=a, h='')

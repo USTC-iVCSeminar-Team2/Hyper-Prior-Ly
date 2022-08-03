@@ -89,7 +89,7 @@ class HyperPrior(nn.Module):
         _ = 0
         bpp_y = len(stream_y) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
         bpp_z = len(stream_z) * 8 / (input_.shape[0] * input_.shape[2] * input_.shape[3])
-        return x_hat, bpp_y, bpp_z
+        return x_hat, bpp_y, bpp_z, (time_enc_end - time_enc_start), (time_dec_end - time_dec_start)
 
 
 if __name__ == '__main__':
